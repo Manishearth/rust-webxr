@@ -55,6 +55,18 @@ enum SessionMsg {
     Quit,
 }
 
+#[cfg_attr(feature = "ipc", derive(Serialize, Deserialize))]
+#[derive(Clone)]
+pub struct Quitter {
+    sender: Sender<SessionMsg>,
+}
+
+impl Quitter {
+    pub fn quit(&self) {
+        let _ = self.sender.send(SessionMsg::Quit);
+    }
+}
+
 /// An object that represents an XR session.
 /// This is owned by the content thread.
 /// https://www.w3.org/TR/webxr/#xrsession-interface
@@ -131,9 +143,11 @@ pub struct SessionThread<D> {
 }
 
 impl<D: Device> SessionThread<D> {
-    pub fn new(device: D) -> Result<SessionThread<D>, Error> {
+    pub fn new(mut device: D) -> Result<SessionThread<D>, Error> {
         let (sender, receiver) = crate::channel().or(Err(Error::CommunicationError))?;
-
+        device.set_quitter(Quitter {
+            sender: sender.clone(),
+        });
         let timestamp = 0.0;
         let images = None;
         let running = true;
@@ -171,9 +185,6 @@ impl<D: Device> SessionThread<D> {
     }
 
     fn handle_msg(&mut self, msg: SessionMsg) -> bool {
-        if !self.device.connected() {
-            return false;
-        }
         match msg {
             SessionMsg::UpdateWebGLExternalImageApi(images) => {
                 self.images = Some(images);

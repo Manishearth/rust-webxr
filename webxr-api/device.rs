@@ -10,6 +10,7 @@ use crate::Floor;
 use crate::Frame;
 use crate::InputSource;
 use crate::Native;
+use crate::Quitter;
 use crate::Session;
 use crate::SessionBuilder;
 use crate::SessionMode;
@@ -62,9 +63,8 @@ pub trait Device: 'static {
     /// Sets the event handling callback
     fn set_event_callback(&mut self, callback: Box<dyn EventCallback>);
 
-    /// Whether the device is still connected
-    fn connected(&mut self) -> bool;
-
     /// Quit the session
     fn quit(&mut self);
+
+    fn set_quitter(&mut self, quitter: Quitter);
 }
