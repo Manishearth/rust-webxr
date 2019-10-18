@@ -50,6 +50,7 @@ use winapi::shared::dxgitype;
 use winapi::shared::winerror::{DXGI_ERROR_NOT_FOUND, S_OK};
 use winapi::um::d3d11;
 use winapi::um::d3dcommon::*;
+use winapi::um::handleapi::INVALID_HANDLE_VALUE;
 use winapi::Interface;
 use wio::com::ComPtr;
 
@@ -91,7 +92,7 @@ pub fn pick_format(formats: &[dxgiformat::DXGI_FORMAT]) -> (dxgiformat::DXGI_FOR
     for format in formats {
         match *format {
             dxgiformat::DXGI_FORMAT_B8G8R8A8_UNORM => return (*format, gl::BGRA),
-            dxgiformat::DXGI_FORMAT_R8G8B8A8_UNORM => return (*format, gl::RGBA),
+            //dxgiformat::DXGI_FORMAT_R8G8B8A8_UNORM => return (*format, gl::RGBA),
             f => {
                 warn!("Backend requested unsupported format {:?}", f);
             }
@@ -123,10 +124,9 @@ impl Discovery for OpenXrDiscovery {
 
 struct OpenXrDevice {
     instance: Instance,
-    #[allow(unused)]
     gl: Rc<dyn Gl>,
-    #[allow(unused)]
     read_fbo: GLuint,
+    write_fbo: GLuint,
     events: EventBuffer,
     session: Session<D3D11>,
     frame_waiter: FrameWaiter,
@@ -144,8 +144,6 @@ struct OpenXrDevice {
     left_image: u32,
     right_swapchain: Swapchain<D3D11>,
     right_image: u32,
-    texture: ComPtr<d3d11::ID3D11Texture2D>,
-    resource: ComPtr<dxgi::IDXGIResource>,
     device_context: ComPtr<d3d11::ID3D11DeviceContext>,
     device: ComPtr<d3d11::ID3D11Device>,
     surfman: Option<(SurfmanDevice, SurfmanContext)>,
@@ -159,6 +157,9 @@ struct OpenXrDevice {
 impl OpenXrDevice {
     fn new(gl: Rc<dyn Gl>, instance: Instance) -> Result<OpenXrDevice, Error> {
         let read_fbo = gl.gen_framebuffers(1)[0];
+        debug_assert_eq!(gl.get_error(), gl::NO_ERROR);
+
+        let write_fbo = gl.gen_framebuffers(1)[0];
         debug_assert_eq!(gl.get_error(), gl::NO_ERROR);
 
         let system = instance
@@ -259,12 +260,12 @@ impl OpenXrDevice {
             .create_swapchain(&swapchain_create_info)
             .map_err(|e| Error::BackendSpecific(format!("{:?}", e)))?;
 
-        let (texture, resource) = create_texture(
+        /*let (texture, resource) = create_texture(
             &left_view_configuration,
             &right_view_configuration,
             &device,
             format,
-        );
+        );*/
 
         let surfman = unsafe { SurfmanDevice::from_current_context().ok() };
 
@@ -288,6 +289,7 @@ impl OpenXrDevice {
             events: Default::default(),
             gl,
             read_fbo,
+            write_fbo,
             session,
             frame_stream,
             frame_waiter,
@@ -304,8 +306,8 @@ impl OpenXrDevice {
             gl_format,
             left_swapchain,
             right_swapchain,
-            texture,
-            resource,
+            /*texture,
+            resource,*/
             device_context,
             device,
             surfman,
@@ -450,14 +452,14 @@ impl Device for OpenXrDevice {
     }
 
     fn render_animation_frame(&mut self, surface: Surface) -> Surface {
-        let (device, mut context) = self.surfman.take().unwrap();
+        let (mut device, mut context) = self.surfman.take().unwrap();
         let size = surface.size();
         let surface_texture = device
             .create_surface_texture(&mut context, surface)
             .unwrap();
         let texture_id = surface_texture.gl_texture();
 
-        fn flip_vec(v: &[u8], width: usize, height: usize) -> Vec<u8> {
+        /*fn flip_vec(v: &[u8], width: usize, height: usize) -> Vec<u8> {
             let mut flipped = Vec::with_capacity(v.len());
             let stride = width * 4;
             for y in 0..height {
@@ -465,7 +467,7 @@ impl Device for OpenXrDevice {
                 flipped.extend_from_slice(&v[start..start + stride]);
             }
             flipped
-        }
+        }*/
 
         // Store existing GL bindings to be restored later.
         let mut value = [0];
@@ -478,18 +480,20 @@ impl Device for OpenXrDevice {
         }
         let old_framebuffer = value[0] as gl::GLuint;
 
+        self.gl.flush();
+
         let fb = self.read_fbo;
-        self.gl.bind_framebuffer(gl::FRAMEBUFFER, fb);
-        self.gl.bind_texture(gl::TEXTURE_2D, texture_id);
+        self.gl.bind_framebuffer(gl::READ_FRAMEBUFFER, fb);
+        self.gl.bind_texture(gl::READ_FRAMEBUFFER, texture_id);
 
         self.gl.framebuffer_texture_2d(
-            gl::FRAMEBUFFER,
+            gl::READ_FRAMEBUFFER,
             gl::COLOR_ATTACHMENT0,
             device.surface_gl_texture_target(),
             texture_id,
             0,
         );
-        let left_data = self.gl.read_pixels(
+        /*let left_data = self.gl.read_pixels(
             0,
             0,
             size.width / 2,
@@ -506,16 +510,13 @@ impl Device for OpenXrDevice {
             gl::UNSIGNED_BYTE,
         );
         let left_data = flip_vec(&left_data, size.width as usize / 2, size.height as usize);
-        let right_data = flip_vec(&right_data, size.width as usize / 2, size.height as usize);
-
-        // Restore old GL bindings.
-        self.gl.bind_texture(gl::TEXTURE_2D, old_texture);
-        self.gl.bind_framebuffer(gl::FRAMEBUFFER, old_framebuffer);
+        let right_data = flip_vec(&right_data, size.width as usize / 2, size.height as usize);*/
 
         let texture_desc = d3d11::D3D11_TEXTURE2D_DESC {
             Width: (size.width / 2) as u32,
             Height: size.height as u32,
             Format: self.format,
+            //Format: 
             MipLevels: 1,
             ArraySize: 1,
             SampleDesc: dxgitype::DXGI_SAMPLE_DESC {
@@ -527,26 +528,126 @@ impl Device for OpenXrDevice {
             CPUAccessFlags: 0,
             MiscFlags: d3d11::D3D11_RESOURCE_MISC_SHARED,
         };
-        let mut init = d3d11::D3D11_SUBRESOURCE_DATA {
+        /*let mut init = d3d11::D3D11_SUBRESOURCE_DATA {
             pSysMem: left_data.as_ptr() as *const _,
             SysMemPitch: ((size.width / 2) * mem::size_of::<u32>() as i32) as u32,
             SysMemSlicePitch: ((size.width / 2) * size.height * mem::size_of::<u32>() as i32)
                 as u32,
-        };
+        };*/
         let mut d3dtex_ptr = ptr::null_mut();
         let (left, right) = unsafe {
             self.device
-                .CreateTexture2D(&texture_desc, &init, &mut d3dtex_ptr);
+                .CreateTexture2D(&texture_desc, /*&init*/ptr::null(), &mut d3dtex_ptr);
             let left = ComPtr::from_raw(d3dtex_ptr);
-            init.pSysMem = right_data.as_ptr() as *const _;
+            //init.pSysMem = right_data.as_ptr() as *const _;
             self.device
-                .CreateTexture2D(&texture_desc, &init, &mut d3dtex_ptr);
+                .CreateTexture2D(&texture_desc, /*&init*/ptr::null(), &mut d3dtex_ptr);
             let right = ComPtr::from_raw(d3dtex_ptr);
             (
                 left.up::<d3d11::ID3D11Resource>(),
                 right.up::<d3d11::ID3D11Resource>(),
             )
         };
+
+        // Get the share handle from the new texture.
+        let left_resource = left.cast::<dxgi::IDXGIResource>().expect("couldn't get IDXGIResource");
+        let mut left_share_handle = INVALID_HANDLE_VALUE;
+        unsafe {
+            assert_eq!(left_resource.GetSharedHandle(&mut left_share_handle), S_OK);
+        }
+        assert_ne!(left_share_handle, INVALID_HANDLE_VALUE);
+
+        // Create a surface that wraps the underlying d3d texture.
+        let left_surface = device
+            .create_surface_from_share_handle(
+                &context, &Size2D::new(size.width / 2, size.height), left_share_handle
+            ).expect("couldn't create left surface from shared handle");
+
+        // Create a surface texture for the wrapped texture.
+        let left_surface_texture = device
+            .create_surface_texture(&mut context, left_surface)
+            .expect("couldn't create left surface texture");
+
+        // Get the GL texture id for the new surface texture.
+        let left_texture_id = left_surface_texture.gl_texture();
+
+        // Attach the new GL texture to the write framebuffer, so the underlying
+        // d3d texture will be the target of the blit operation.
+        self.gl.bind_framebuffer(/*gl::DRAW_FRAMEBUFFER*/gl::FRAMEBUFFER, self.write_fbo);
+        self.gl.bind_texture(gl::FRAMEBUFFER, left_texture_id);
+        self.gl.framebuffer_texture_2d(
+            //gl::DRAW_FRAMEBUFFER,
+            gl::FRAMEBUFFER,
+            gl::COLOR_ATTACHMENT0,
+            device.surface_gl_texture_target(),
+            left_texture_id,
+            0,
+        );
+        assert_eq!(self.gl.get_error(), gl::NO_ERROR);
+
+        self.gl.clear_color(1., 0., 0., 1.);
+        self.gl.clear(gl::COLOR_BUFFER_BIT);
+        self.gl.flush();
+
+        // Blit the appropriate rectangle from the source texture to the d3d texture.
+        /*self.gl.blit_framebuffer(
+            0, 0, size.width / 2, size.height,
+            0, 0, size.width / 2, size.height,
+            gl::COLOR_BUFFER_BIT, gl::NEAREST
+        );*/
+        assert_eq!(self.gl.get_error(), gl::NO_ERROR);
+
+        // Get the share handle from the new texture.
+        let right_resource = left.cast::<dxgi::IDXGIResource>().expect("couldn't get IDXGIResource");
+        let mut right_share_handle = INVALID_HANDLE_VALUE;
+        unsafe {
+            assert_eq!(right_resource.GetSharedHandle(&mut right_share_handle), S_OK);
+        }
+        assert_ne!(right_share_handle, INVALID_HANDLE_VALUE);
+
+        // Create a surface that wraps the underlying d3d texture.
+        let right_surface = device
+            .create_surface_from_share_handle(
+                &context, &Size2D::new(size.width / 2, size.height), right_share_handle
+            ).expect("couldn't create right surface from shared handle");
+
+        // Create a surface texture for the wrapped texture.
+        let right_surface_texture = device
+            .create_surface_texture(&mut context, right_surface)
+            .unwrap();
+
+        // Get the GL texture id for the new surface texture.
+        let right_texture_id = right_surface_texture.gl_texture();
+
+        // Attach the new GL texture to the write framebuffer, so the underlying
+        // d3d texture will be the target of the blit operation.
+        self.gl.bind_framebuffer(/*gl::DRAW_FRAMEBUFFER*/gl::FRAMEBUFFER, self.write_fbo);
+        self.gl.bind_texture(gl::FRAMEBUFFER, right_texture_id);
+        self.gl.framebuffer_texture_2d(
+            //gl::DRAW_FRAMEBUFFER,
+            gl::FRAMEBUFFER,
+            gl::COLOR_ATTACHMENT0,
+            device.surface_gl_texture_target(),
+            right_texture_id,
+            0,
+        );
+        assert_eq!(self.gl.get_error(), gl::NO_ERROR);
+
+        self.gl.clear_color(0., 1., 0., 1.);
+        self.gl.clear(gl::COLOR_BUFFER_BIT);
+        self.gl.flush();
+
+        // Blit the appropriate rectangle from the source texture to the d3d texture.
+        /*self.gl.blit_framebuffer(
+            size.width / 2, 0, size.width, size.height,
+            0, 0, size.width / 2, size.height,
+            gl::COLOR_BUFFER_BIT, gl::NEAREST
+        );*/
+        assert_eq!(self.gl.get_error(), gl::NO_ERROR);
+        
+        // Restore old GL bindings.
+        self.gl.bind_framebuffer(gl::FRAMEBUFFER, old_framebuffer);
+        self.gl.bind_framebuffer(gl::FRAMEBUFFER, old_texture);
 
         // XXXManishearth this code should perhaps be in wait_for_animation_frame,
         // but we then get errors that wait_image was called without a release_image()
@@ -644,6 +745,10 @@ impl Device for OpenXrDevice {
                     ])],
             )
             .unwrap();
+        let left_surface = device.destroy_surface_texture(&mut context, left_surface_texture).unwrap();
+        let right_surface = device.destroy_surface_texture(&mut context, right_surface_texture).unwrap();
+        device.destroy_surface(&mut context, left_surface).unwrap();
+        device.destroy_surface(&mut context, right_surface).unwrap();
         let surface = device
             .destroy_surface_texture(&mut context, surface_texture)
             .unwrap();
@@ -777,7 +882,7 @@ fn init_device_for_adapter(
     }
 }
 
-fn create_texture(
+/*fn create_texture(
     left_view_configuration: &ViewConfigurationView,
     right_view_configuration: &ViewConfigurationView,
     device: &ComPtr<ID3D11Device>,
@@ -825,7 +930,7 @@ fn create_texture(
             .expect("not a dxgi resource");
         (d3dtex, dxgi_resource)
     }
-}
+}*/
 
 fn transform<Eye>(pose: &Posef) -> RigidTransform3D<f32, Eye, Native> {
     let rotation = Rotation3D::quaternion(
