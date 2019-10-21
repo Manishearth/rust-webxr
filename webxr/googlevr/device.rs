@@ -205,7 +205,7 @@ impl GoogleVRDevice {
         // Initializes gvr necessary GL-related objects.
         gvr::gvr_initialize_gl(self.ctx);
 
-        self.surfman = surfman::Device::from_current_context().ok();
+        self.surfman = surfman::Device::from_current_hardware_context().ok();
 
         // GVR_FEATURE_MULTIVIEW must be checked after gvr_initialize_gl is called or the function will crash.
         if self.multiview && !gvr::gvr_is_feature_supported(self.ctx, GVR_FEATURE_MULTIVIEW as i32)

@@ -264,7 +264,7 @@ impl OpenXrDevice {
             format,
         );
 
-        let surfman = unsafe { surfman::Device::from_current_context().ok() };
+        let surfman = unsafe { surfman::Device::from_current_hardware_context().ok() };
 
         // input
 

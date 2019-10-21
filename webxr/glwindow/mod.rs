@@ -216,8 +216,8 @@ impl Drop for GlWindowDevice {
 impl GlWindowDevice {
     fn new(gl: Rc<dyn Gl>, window: Rc<dyn GlWindow>) -> Result<GlWindowDevice, Error> {
         window.make_current();
-        let (device, context) =
-            unsafe { SurfmanDevice::from_current_context() }.or(Err(Error::NoMatchingDevice))?;
+        let (device, context) = unsafe { SurfmanDevice::from_current_hardware_context() }
+            .or(Err(Error::NoMatchingDevice))?;
         let read_fbo = gl.gen_framebuffers(1)[0];
         debug_assert_eq!(gl.get_error(), gl::NO_ERROR);
 
