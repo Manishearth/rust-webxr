@@ -89,6 +89,7 @@ fn create_instance() -> Result<Instance, String> {
 }
 
 pub fn pick_format(formats: &[dxgiformat::DXGI_FORMAT]) -> (dxgiformat::DXGI_FORMAT, GLenum) {
+    warn!("Available formats: {:?}", formats);
     for format in formats {
         match *format {
             dxgiformat::DXGI_FORMAT_B8G8R8A8_UNORM => return (*format, gl::BGRA),
@@ -454,10 +455,12 @@ impl Device for OpenXrDevice {
     fn render_animation_frame(&mut self, surface: Surface) -> Surface {
         let (mut device, mut context) = self.surfman.take().unwrap();
         let size = surface.size();
-        let surface_texture = device
+        let share_handle = surface.share_handle().expect("no share handle??");
+
+        /*let surface_texture = device
             .create_surface_texture(&mut context, surface)
             .unwrap();
-        let texture_id = surface_texture.gl_texture();
+        let texture_id = surface_texture.gl_texture();*/
 
         /*fn flip_vec(v: &[u8], width: usize, height: usize) -> Vec<u8> {
             let mut flipped = Vec::with_capacity(v.len());
@@ -470,7 +473,7 @@ impl Device for OpenXrDevice {
         }*/
 
         // Store existing GL bindings to be restored later.
-        let mut value = [0];
+        /*let mut value = [0];
         unsafe {
             self.gl.get_integer_v(gl::TEXTURE_BINDING_2D, &mut value);
         }
@@ -478,21 +481,21 @@ impl Device for OpenXrDevice {
         unsafe {
             self.gl.get_integer_v(gl::FRAMEBUFFER_BINDING, &mut value);
         }
-        let old_framebuffer = value[0] as gl::GLuint;
+        let old_framebuffer = value[0] as gl::GLuint;*/
 
-        self.gl.flush();
+        //self.gl.flush();
 
-        let fb = self.read_fbo;
-        self.gl.bind_framebuffer(gl::READ_FRAMEBUFFER, fb);
-        self.gl.bind_texture(gl::READ_FRAMEBUFFER, texture_id);
+        //let fb = self.read_fbo;
+        /*self.gl.bind_framebuffer(gl::FRAMEBUFFER, fb);
+        self.gl.bind_texture(gl::FRAMEBUFFER, texture_id);
 
         self.gl.framebuffer_texture_2d(
-            gl::READ_FRAMEBUFFER,
+            gl::FRAMEBUFFER,
             gl::COLOR_ATTACHMENT0,
             device.surface_gl_texture_target(),
             texture_id,
             0,
-        );
+        );*/
         /*let left_data = self.gl.read_pixels(
             0,
             0,
@@ -512,7 +515,7 @@ impl Device for OpenXrDevice {
         let left_data = flip_vec(&left_data, size.width as usize / 2, size.height as usize);
         let right_data = flip_vec(&right_data, size.width as usize / 2, size.height as usize);*/
 
-        let texture_desc = d3d11::D3D11_TEXTURE2D_DESC {
+        /*let texture_desc = d3d11::D3D11_TEXTURE2D_DESC {
             Width: (size.width / 2) as u32,
             Height: size.height as u32,
             Format: self.format,
@@ -527,14 +530,14 @@ impl Device for OpenXrDevice {
             BindFlags: d3d11::D3D11_BIND_RENDER_TARGET | d3d11::D3D11_BIND_SHADER_RESOURCE,
             CPUAccessFlags: 0,
             MiscFlags: d3d11::D3D11_RESOURCE_MISC_SHARED,
-        };
+        };*/
         /*let mut init = d3d11::D3D11_SUBRESOURCE_DATA {
             pSysMem: left_data.as_ptr() as *const _,
             SysMemPitch: ((size.width / 2) * mem::size_of::<u32>() as i32) as u32,
             SysMemSlicePitch: ((size.width / 2) * size.height * mem::size_of::<u32>() as i32)
                 as u32,
         };*/
-        let mut d3dtex_ptr = ptr::null_mut();
+        /*let mut d3dtex_ptr = ptr::null_mut();
         let (left, right) = unsafe {
             self.device
                 .CreateTexture2D(&texture_desc, /*&init*/ptr::null(), &mut d3dtex_ptr);
@@ -547,10 +550,10 @@ impl Device for OpenXrDevice {
                 left.up::<d3d11::ID3D11Resource>(),
                 right.up::<d3d11::ID3D11Resource>(),
             )
-        };
+        };*/
 
         // Get the share handle from the new texture.
-        let left_resource = left.cast::<dxgi::IDXGIResource>().expect("couldn't get IDXGIResource");
+        /*let left_resource = left.cast::<dxgi::IDXGIResource>().expect("couldn't get IDXGIResource");
         let mut left_share_handle = INVALID_HANDLE_VALUE;
         unsafe {
             assert_eq!(left_resource.GetSharedHandle(&mut left_share_handle), S_OK);
@@ -587,7 +590,7 @@ impl Device for OpenXrDevice {
 
         self.gl.clear_color(1., 0., 0., 1.);
         self.gl.clear(gl::COLOR_BUFFER_BIT);
-        self.gl.flush();
+        self.gl.flush();*/
 
         // Blit the appropriate rectangle from the source texture to the d3d texture.
         /*self.gl.blit_framebuffer(
@@ -595,7 +598,7 @@ impl Device for OpenXrDevice {
             0, 0, size.width / 2, size.height,
             gl::COLOR_BUFFER_BIT, gl::NEAREST
         );*/
-        assert_eq!(self.gl.get_error(), gl::NO_ERROR);
+        /*assert_eq!(self.gl.get_error(), gl::NO_ERROR);
 
         // Get the share handle from the new texture.
         let right_resource = left.cast::<dxgi::IDXGIResource>().expect("couldn't get IDXGIResource");
@@ -634,7 +637,7 @@ impl Device for OpenXrDevice {
         assert_eq!(self.gl.get_error(), gl::NO_ERROR);
 
         self.gl.clear_color(0., 1., 0., 1.);
-        self.gl.clear(gl::COLOR_BUFFER_BIT);
+        self.gl.clear(gl::COLOR_BUFFER_BIT);*/
         self.gl.flush();
 
         // Blit the appropriate rectangle from the source texture to the d3d texture.
@@ -643,17 +646,32 @@ impl Device for OpenXrDevice {
             0, 0, size.width / 2, size.height,
             gl::COLOR_BUFFER_BIT, gl::NEAREST
         );*/
-        assert_eq!(self.gl.get_error(), gl::NO_ERROR);
+        /*assert_eq!(self.gl.get_error(), gl::NO_ERROR);
         
         // Restore old GL bindings.
         self.gl.bind_framebuffer(gl::FRAMEBUFFER, old_framebuffer);
-        self.gl.bind_framebuffer(gl::FRAMEBUFFER, old_texture);
+        self.gl.bind_framebuffer(gl::FRAMEBUFFER, old_texture);*/
 
         // XXXManishearth this code should perhaps be in wait_for_animation_frame,
         // but we then get errors that wait_image was called without a release_image()
         self.frame_stream
             .begin()
             .expect("failed to start frame stream");
+
+        let mut tmpResource = ptr::null_mut();
+        unsafe {
+            let hr = self.device.OpenSharedResource(share_handle, &d3d11::ID3D11Resource::uuidof(), &mut tmpResource);
+            assert_eq!(hr, S_OK);
+            assert!(!tmpResource.is_null());
+        }
+        let tmpResource = unsafe { ComPtr::from_raw(tmpResource as *mut d3d11::ID3D11Resource) };
+        let texture = tmpResource.cast::<d3d11::ID3D11Texture2D>().expect("not a d3d texture???");
+
+        let mut desc: d3d11::D3D11_TEXTURE2D_DESC = unsafe { mem::zeroed() };
+        unsafe { texture.GetDesc(&mut desc) };
+        println!("have a d3d texture: {:?}", desc.Format);
+
+        let texture = texture.up::<d3d11::ID3D11Resource>();
 
         self.left_image = self.left_swapchain.acquire_image().unwrap();
         self.left_swapchain
@@ -669,7 +687,14 @@ impl Device for OpenXrDevice {
         let right_swapchain_images = self.right_swapchain.enumerate_images().unwrap();
         let right_image = right_swapchain_images[self.right_image as usize];
 
-        let b = d3d11::D3D11_BOX {
+        let mut desc: d3d11::D3D11_TEXTURE2D_DESC = unsafe { mem::zeroed() };
+        let left_image_tmp = unsafe { ComPtr::from_raw(left_image) };
+        unsafe { left_image_tmp.GetDesc(&mut desc); }
+        mem::forget(left_image_tmp);
+        println!("openxr d3d texture: {:?}", desc.Format);
+
+
+        let mut b = d3d11::D3D11_BOX {
             left: 0,
             top: 0,
             front: 0,
@@ -691,21 +716,31 @@ impl Device for OpenXrDevice {
                 0,
                 0,
                 0,
-                left.as_raw(),
+                texture.as_raw(),
                 0,
                 &b,
             );
+            b = d3d11::D3D11_BOX {
+                left: (size.width / 2) as u32,
+                top: 0,
+                front: 0,
+                right: size.width as u32,
+                bottom: size.height as u32,
+                back: 1,
+            };
             self.device_context.CopySubresourceRegion(
                 right_resource.as_raw(),
                 0,
                 0,
                 0,
                 0,
-                right.as_raw(),
+                texture.as_raw(),
                 0,
                 &b,
             );
         }
+        
+        mem::forget(texture);
 
         self.left_swapchain.release_image().unwrap();
         self.right_swapchain.release_image().unwrap();
@@ -745,13 +780,13 @@ impl Device for OpenXrDevice {
                     ])],
             )
             .unwrap();
-        let left_surface = device.destroy_surface_texture(&mut context, left_surface_texture).unwrap();
-        let right_surface = device.destroy_surface_texture(&mut context, right_surface_texture).unwrap();
-        device.destroy_surface(&mut context, left_surface).unwrap();
-        device.destroy_surface(&mut context, right_surface).unwrap();
-        let surface = device
+        /*let left_surface = device.destroy_surface_texture(&mut context, left_surface_texture).unwrap();
+        let right_surface = device.destroy_surface_texture(&mut context, right_surface_texture).unwrap();*/
+        /*device.destroy_surface(&mut context, left_surface).unwrap();
+        device.destroy_surface(&mut context, right_surface).unwrap();*/
+        /*let surface = device
             .destroy_surface_texture(&mut context, surface_texture)
-            .unwrap();
+            .unwrap();*/
         self.surfman = Some((device, context));
         surface
     }
@@ -867,7 +902,7 @@ fn init_device_for_adapter(
             D3D_DRIVER_TYPE_UNKNOWN,
             ptr::null_mut(),
             // add d3d11::D3D11_CREATE_DEVICE_DEBUG below for debug output
-            d3d11::D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+            d3d11::D3D11_CREATE_DEVICE_BGRA_SUPPORT | d3d11::D3D11_CREATE_DEVICE_DEBUG,
             feature_levels.as_ptr(),
             feature_levels.len() as u32,
             d3d11::D3D11_SDK_VERSION,
