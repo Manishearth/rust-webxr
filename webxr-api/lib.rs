@@ -80,7 +80,7 @@ impl SwapChainId {
     }
 }
 
-const NEXT_SWAP_CHAIN_ID: AtomicUsize = AtomicUsize::new(0);
+static NEXT_SWAP_CHAIN_ID: AtomicUsize = AtomicUsize::new(0);
 
 #[cfg(feature = "ipc")]
 use std::thread;
