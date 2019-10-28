@@ -59,6 +59,10 @@ use std::rc::Rc;
 use std::thread;
 use std::time::Duration;
 
+use surfman::platform::generic::universal::context::Context as SurfmanContext;
+use surfman::platform::generic::universal::device::Device as SurfmanDevice;
+use surfman::platform::generic::universal::surface::Surface;
+
 use webxr_api::Device;
 use webxr_api::Discovery;
 use webxr_api::Display;
@@ -88,6 +92,8 @@ pub struct MagicLeapDiscovery {
 }
 
 pub struct MagicLeapDevice {
+    surfman_device: SurfmanDevice,
+    surfman_context: SurfmanContext,
     gl: Rc<dyn Gl>,
     read_fbo: GLuint,
     draw_fbo: GLuint,
@@ -153,7 +159,13 @@ impl MagicLeapDevice {
         let frame_handle = MLHandle::default();
         let cameras = MLGraphicsVirtualCameraInfoArray::default();
 
+        let (surfman_device, surfman_context) =
+            unsafe { SurfmanDevice::from_current_hardware_context() }
+                .or(Err(MLResult::UnspecifiedFailure))?;
+
         let mut device = MagicLeapDevice {
+            surfman_device,
+            surfman_context,
             gl,
             graphics_client,
             head_tracking_sdata,
@@ -398,10 +410,25 @@ impl Device for MagicLeapDevice {
         })
     }
 
-    fn render_animation_frame(&mut self, texture_id: u32, size: UntypedSize2D<i32>) {
+    fn render_animation_frame(&mut self, surface: Surface) -> Surface {
+        self.surfman_device
+            .make_context_current(&self.surfman_context);
+        debug_assert_eq!(self.gl.get_error(), gl::NO_ERROR);
+
+        let size = surface.size();
+        let surface_texture = self
+            .surfman_device
+            .create_surface_texture(&mut self.surfman_context, surface)
+            .unwrap();
+        let texture_id = surface_texture.gl_texture();
+
         if let Err(err) = self.stop_frame(texture_id, size) {
             error!("Failed to stop frame ({:?}).", err);
         }
+
+        self.surfman_device
+            .destroy_surface_texture(&mut self.surfman_context, surface_texture)
+            .unwrap()
     }
 
     fn views(&self) -> Views {
