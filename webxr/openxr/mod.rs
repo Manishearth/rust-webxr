@@ -19,7 +19,9 @@ use openxr::{
 };
 use std::rc::Rc;
 use std::{mem, ptr};
-use surfman::Surface;
+use surfman::platform::generic::universal::context::Context as SurfmanContext;
+use surfman::platform::generic::universal::device::Device as SurfmanDevice;
+use surfman::platform::generic::universal::surface::Surface;
 use webxr_api;
 use webxr_api::Device;
 use webxr_api::Discovery;
@@ -146,7 +148,7 @@ struct OpenXrDevice {
     resource: ComPtr<dxgi::IDXGIResource>,
     device_context: ComPtr<d3d11::ID3D11DeviceContext>,
     device: ComPtr<d3d11::ID3D11Device>,
-    surfman: Option<(surfman::Device, surfman::Context)>,
+    surfman: Option<(SurfmanDevice, SurfmanContext)>,
 
     // input
     action_set: ActionSet,
@@ -264,7 +266,7 @@ impl OpenXrDevice {
             format,
         );
 
-        let surfman = unsafe { surfman::Device::from_current_hardware_context().ok() };
+        let surfman = unsafe { SurfmanDevice::from_current_hardware_context().ok() };
 
         // input
 

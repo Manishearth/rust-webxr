@@ -25,9 +25,9 @@ use glutin::EventsLoopClosed;
 
 use std::rc::Rc;
 
-use surfman::Context;
-use surfman::Device as SurfmanDevice;
-use surfman::Surface;
+use surfman::platform::generic::universal::context::Context;
+use surfman::platform::generic::universal::device::Device as SurfmanDevice;
+use surfman::platform::generic::universal::surface::Surface;
 
 use webxr_api::Device;
 use webxr_api::Discovery;

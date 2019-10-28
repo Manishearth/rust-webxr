@@ -22,7 +22,7 @@ use crate::Views;
 use euclid::RigidTransform3D;
 use euclid::Size2D;
 
-use surfman::Surface;
+use surfman::platform::generic::universal::surface::Surface;
 
 /// A trait for discovering XR devices
 pub trait Discovery: 'static {

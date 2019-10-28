@@ -44,7 +44,9 @@ use std::{mem, ptr};
 use super::discovery::SendPtr;
 use super::input::GoogleVRController;
 
-use surfman::Surface;
+use surfman::platform::generic::universal::context::Context as SurfmanContext;
+use surfman::platform::generic::universal::device::Device as SurfmanDevice;
+use surfman::platform::generic::universal::surface::Surface;
 
 #[cfg(target_os = "android")]
 use crate::jni_utils::JNIScope;
@@ -81,7 +83,7 @@ pub(crate) struct GoogleVRDevice {
     fbo_texture: u32,
     presenting: bool,
     frame_bound: bool,
-    surfman: Option<(surfman::Device, surfman::Context)>,
+    surfman: Option<(SurfmanDevice, SurfmanContext)>,
 }
 
 impl GoogleVRDevice {
@@ -205,7 +207,7 @@ impl GoogleVRDevice {
         // Initializes gvr necessary GL-related objects.
         gvr::gvr_initialize_gl(self.ctx);
 
-        self.surfman = surfman::Device::from_current_hardware_context().ok();
+        self.surfman = SurfmanDevice::from_current_hardware_context().ok();
 
         // GVR_FEATURE_MULTIVIEW must be checked after gvr_initialize_gl is called or the function will crash.
         if self.multiview && !gvr::gvr_is_feature_supported(self.ctx, GVR_FEATURE_MULTIVIEW as i32)

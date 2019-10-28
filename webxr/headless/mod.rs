@@ -37,7 +37,7 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use surfman::Surface;
+use surfman::platform::generic::universal::surface::Surface;
 
 pub struct HeadlessMockDiscovery {}
 
