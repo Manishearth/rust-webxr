@@ -31,7 +31,7 @@ magicleap = ["egl"]
 openxr-api = ["openxr", "winapi", "wio"]
 
 [dependencies]
-webxr-api = { path = "../webxr-api" }
+webxr-api = { git = "https://github.com/asajeffrey/webxr", branch = "surfman" }
 euclid = "0.20"
 gleam = "0.6"
 glutin = { version = "0.21", optional = true }
