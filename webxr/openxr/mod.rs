@@ -128,8 +128,8 @@ struct OpenXrDevice {
     frame_stream: FrameStream<D3D11>,
     frame_state: FrameState,
     space: Space,
+    viewer_space: Space,
     clip_planes: ClipPlanes,
-    openxr_views: Vec<openxr::View>,
     view_configurations: Vec<openxr::ViewConfigurationView>,
     left_extent: Extent2Di,
     right_extent: Extent2Di,
@@ -138,6 +138,7 @@ struct OpenXrDevice {
     right_swapchain: Swapchain<D3D11>,
     right_image: u32,
     surfman: (SurfmanDevice, SurfmanContext),
+    views: Vec<openxr::View>,
 
     // input
     action_set: ActionSet,
@@ -214,7 +215,6 @@ impl OpenXrDevice {
             .begin(ViewConfigurationType::PRIMARY_STEREO)
             .map_err(|e| Error::BackendSpecific(format!("{:?}", e)))?;
 
-        let ref_space_type = ReferenceSpaceType::LOCAL;
         let pose = Posef {
             orientation: Quaternionf {
                 x: 0.,
@@ -229,7 +229,11 @@ impl OpenXrDevice {
             },
         };
         let space = session
-            .create_reference_space(ref_space_type, pose)
+            .create_reference_space(ReferenceSpaceType::LOCAL, pose)
+            .map_err(|e| Error::BackendSpecific(format!("{:?}", e)))?;
+
+        let viewer_space = session
+            .create_reference_space(ReferenceSpaceType::VIEW, pose)
             .map_err(|e| Error::BackendSpecific(format!("{:?}", e)))?;
 
         let view_configurations = instance
@@ -249,13 +253,6 @@ impl OpenXrDevice {
 
         // Obtain view info
         let frame_state = frame_waiter.wait().expect("error waiting for frame");
-        let (_view_flags, views) = session
-            .locate_views(
-                ViewConfigurationType::PRIMARY_STEREO,
-                frame_state.predicted_display_time,
-                &space,
-            )
-            .expect("error locating views");
 
         // Create swapchains
 
@@ -310,17 +307,17 @@ impl OpenXrDevice {
             frame_waiter,
             frame_state,
             space,
+            viewer_space,
             clip_planes: Default::default(),
             left_extent,
             right_extent,
             left_image: 0,
             right_image: 0,
-            openxr_views: views,
             view_configurations,
             left_swapchain,
             right_swapchain,
             surfman: surfman.extract(),
-
+            views: vec![],
             action_set,
             right_hand,
             left_hand,
@@ -371,9 +368,13 @@ impl Device for OpenXrDevice {
     fn views(&self) -> Views {
         let left_view_configuration = &self.view_configurations[0];
         let right_view_configuration = &self.view_configurations[1];
-        let views = &self.openxr_views;
-
-        let lerped = lerp_transforms(&views[0].pose, &views[1].pose);
+        let (_view_flags, views) = self.session
+            .locate_views(
+                ViewConfigurationType::PRIMARY_STEREO,
+                self.frame_state.predicted_display_time,
+                &self.viewer_space,
+            )
+            .expect("error locating views");
         let left_vp = Rect::new(
             Point2D::zero(),
             Size2D::new(
@@ -392,12 +393,12 @@ impl Device for OpenXrDevice {
             ),
         );
         let left_view = View {
-            transform: transform(&views[0].pose).inverse().pre_transform(&lerped),
+            transform: transform(&views[0].pose).inverse(),
             projection: fov_to_projection_matrix(&views[0].fov, self.clip_planes),
             viewport: left_vp,
         };
         let right_view = View {
-            transform: transform(&views[1].pose).inverse().pre_transform(&lerped),
+            transform: transform(&views[1].pose).inverse(),
             projection: fov_to_projection_matrix(&views[1].fov, self.clip_planes),
             viewport: right_vp,
         };
@@ -420,10 +421,9 @@ impl Device for OpenXrDevice {
                 &self.space,
             )
             .expect("error locating views");
-        self.openxr_views = views;
-
-        let transform = lerp_transforms(&self.openxr_views[0].pose, &self.openxr_views[1].pose);
-
+        self.views = views;
+        let pose = self.viewer_space.locate(&self.space, self.frame_state.predicted_display_time).unwrap();
+        let transform = transform(&pose.pose);
         let events = if self.clip_planes.recently_updated() {
             vec![FrameUpdateEvent::UpdateViews(self.views())]
         } else {
@@ -602,8 +602,8 @@ impl Device for OpenXrDevice {
                     .layer_flags(CompositionLayerFlags::BLEND_TEXTURE_SOURCE_ALPHA)
                     .views(&[
                         openxr::CompositionLayerProjectionView::new()
-                            .pose(self.openxr_views[0].pose)
-                            .fov(self.openxr_views[0].fov)
+                            .pose(self.views[0].pose)
+                            .fov(self.views[0].fov)
                             .sub_image(
                                 // XXXManishearth is this correct?
                                 openxr::SwapchainSubImage::new()
@@ -615,8 +615,8 @@ impl Device for OpenXrDevice {
                                     }),
                             ),
                         openxr::CompositionLayerProjectionView::new()
-                            .pose(self.openxr_views[0].pose)
-                            .fov(self.openxr_views[0].fov)
+                            .pose(self.views[0].pose)
+                            .fov(self.views[0].fov)
                             .sub_image(
                                 openxr::SwapchainSubImage::new()
                                     .swapchain(&self.right_swapchain)
@@ -692,7 +692,7 @@ impl Drop for OpenXrDevice {
     }
 }
 
-fn transform<Eye>(pose: &Posef) -> RigidTransform3D<f32, Eye, Native> {
+fn transform<Src, Dst>(pose: &Posef) -> RigidTransform3D<f32, Src, Dst> {
     let rotation = Rotation3D::quaternion(
         pose.orientation.x,
         pose.orientation.y,
