@@ -32,7 +32,7 @@ magicleap = ["egl"]
 openxr-api = ["angle", "openxr", "winapi", "wio"]
 
 [dependencies]
-webxr-api = { path = "../webxr-api" }
+webxr-api = { git = "https://github.com/jdm/webxr", branch = "no-gl-readback2" }
 euclid = "0.20"
 gleam = "0.6"
 glutin = { version = "0.21", optional = true }
